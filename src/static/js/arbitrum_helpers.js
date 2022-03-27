@@ -29,7 +29,8 @@ const ArbitrumTokens = [
     { "id": "pickle-finance", "symbol": "PICKLE", "contract": "0x965772e0E9c84b6f359c8597C891108DcF1c5B1A"},
     { "id": "saddle-finance", "symbol": "SDL", "contract": "0x75c9bc761d88f70156daf83aa010e84680baf131"},
     { "id": "frax", "symbol": "FRAX", "contract": "0x17FC002b466eEc40DaE837Fc4bE5c67993ddBd6F"},
-    { "id": "governance-ohm", "symbol": "gOHM", "contract": "0x8D9bA570D6cb60C7e3e0F31343Efe75AB8E65FB1"}
+    { "id": "governance-ohm", "symbol": "gOHM", "contract": "0x8D9bA570D6cb60C7e3e0F31343Efe75AB8E65FB1"},
+    { "id": "stargate-finance", "symbol": "STG", "contract": "0x6694340fc020c5E6B96567843da2df01b2CE1eb6"}
 ];
 
 const uniSqrtPrice = (tokenDecimals, sqrtRatioX96) => {
@@ -380,7 +381,7 @@ async function getArbitrumTriCryptoToken(App, curve, address, stakingAddress, mi
       address,
       name,
       symbol,
-      totalSupply : totalSupply / 10 ** decimals,
+      totalSupply,
       decimals : decimals,
       staked:  staked / 10 ** decimals,
       unstaked: unstaked  / 10 ** decimals,
@@ -390,6 +391,29 @@ async function getArbitrumTriCryptoToken(App, curve, address, stakingAddress, mi
       virtualPrice : virtualPrice / 1e18,
       xcp_profit : xcp_profit / 10 ** decimals
   };
+}
+
+async function getArbitrumYearnVault(app, yearn, address, stakingAddress) {
+  const calls = [yearn.decimals(), yearn.token(), yearn.name(), yearn.symbol(), yearn.totalSupply(),
+    yearn.balanceOf(stakingAddress), yearn.balanceOf(app.YOUR_ADDRESS), yearn.totalAssets(), yearn.pricePerShare()];
+  const [decimals, token_, name, symbol, totalSupply, staked, unstaked, balance, ppfs] =
+    await app.ethcallProvider.all(calls);
+  const token = await getArbitrumToken(app, token_, address);
+  return {
+    address,
+    name,
+    symbol,
+    totalSupply,
+    decimals : decimals,
+    staked: staked / 10 ** decimals,
+    unstaked: unstaked / 10 ** decimals,
+    token: token,
+    balance : balance / 10 ** decimals,
+    contract: yearn,
+    tokens : [address].concat(token.tokens),
+    ppfs : ppfs / 10 ** decimals,
+    yearn : true
+  }
 }
 
 async function getArbitrumStableswapToken(App, stable, address, stakingAddress) {
@@ -452,6 +476,9 @@ async function getArbitrumStoredToken(App, tokenAddress, stakingAddress, type) {
     case "cToken":
       const cToken = new ethcall.Contract(tokenAddress, CTOKEN_ABI);
       return await getCArbitrumToken(App, cToken, tokenAddress, stakingAddress);
+    case "yearn":
+      const yearnVault = new ethcall.Contract(tokenAddress, YEARN_VAULT_ABI);
+      return await getArbitrumYearnVault(App, yearnVault, tokenAddress, stakingAddress);
     case "triToken":
       const tri = new ethcall.Contract(tokenAddress, TRITOKEN_ABI);
       const [triMinter] = await App.ethcallProvider.all([tri.minter()]);
@@ -513,6 +540,15 @@ async function getArbitrumToken(App, tokenAddress, stakingAddress) {
       const res = await getCArbitrumToken(App, cArbitrumToken, tokenAddress, stakingAddress);
       window.localStorage.setItem(tokenAddress, "cToken");
       return res;
+    }
+    catch(err) {
+    }
+    try {
+      const yearnVault = new ethcall.Contract(tokenAddress, YEARN_VAULT_ABI);
+      const _domainSep = await App.ethcallProvider.all([yearnVault.DOMAIN_SEPARATOR()]);
+      const yearn = await getArbitrumYearnVault(App, yearnVault, tokenAddress, stakingAddress);
+      window.localStorage.setItem(tokenAddress, "yearn");
+      return yearn;
     }
     catch(err) {
     }
